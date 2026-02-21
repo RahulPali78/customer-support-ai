@@ -1,0 +1,217 @@
+{
+  "name": "02 - Classify and Route",
+  "nodes": [
+    {
+      "parameters": {
+        "event": "INSERT",
+        "schema": "public",
+        "table": "emails"
+      },
+      "type": "n8n-nodes-base.supabaseTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "id": "trigger-node",
+      "name": "Supabase Trigger",
+      "webhookId": "email-insert-webhook",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {},
+        "prompt": "={{$json.record.body_text}}\n\n---\n\nINSTRUCTIONS:\nClassify this customer service email into exactly ONE of these categories:\n- REFUND: Customer wants money back, return item, cancel order\n- STATUS: Checking order status, tracking, delivery time\n- COMPLAINT: Dissatisfied, quality issue, bad experience\n- GENERAL: Question not fitting above, partnership, wholesale, etc.\n- OTHER: Spam, unclear, or cannot categorize\n\nRespond ONLY in this JSON format:\n{\n  \"classification\": \"REFUND|STATUS|COMPLAINT|GENERAL|OTHER\",\n  \"confidence\": 0.0-1.0,\n  \"reasoning\": \"brief explanation\",\n  \"urgency\": \"low|medium|high|critical\"\n}\n\nconfidence > 0.8 means clear classification\nconfidence < 0.8 means ambiguous, needs human review"
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [450, 300],
+      "id": "openai-classify",
+      "name": "OpenAI: Classify",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonParse": true
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [650, 300],
+      "id": "parse-response",
+      "name": "Parse Classification"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "high-confidence",
+              "leftValue": "={{ $json.confidence }}",
+              "rightValue": 0.8,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "id": "check-confidence",
+      "name": "High Confidence?"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": {
+          "value": "emails"
+        },
+        "filter": {
+          "property": [
+            {
+              "name": "id",
+              "value": "={{ $json.record.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "schema": [
+            {
+              "column": "classification",
+              "value": "={{ $json.classification }}"
+            },
+            {
+              "column": "confidence",
+              "value": "={{ $json.confidence }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1050, 200],
+      "id": "update-classified",
+      "name": "Update: Classified",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#support-review",
+        "text": "📋 *New Email Requires Review*\n\nFrom: {{ $json.record.sender_name }} <{{ $json.record.sender_email }}>\nSubject: {{ $json.record.subject }}\n\nClassification: {{ $json.classification }} (confidence: {{ $json.confience }})\nUrgency: {{ $json.urgency }}\n\n*Reasoning:* {{ $json.reasoning }}\n\n<Dashboard|https://your-dashboard.com/emails/{{ $json.record.id }}>",
+        "additionalFields": {},
+        "blocksUi": {
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "text": "Low confidence classification - needs human review",
+                "type": "mrkdwn"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "text": "View Email",
+                    "type": "plain_text"
+                  },
+                  "url": "https://your-dashboard.com/emails/{{ $json.record.id }}",
+                  "style": "primary"
+                },
+                {
+                  "type": "button",
+                  "text": {
+                    "text": "Manual Handle",
+                    "type": "plain_text"
+                  },
+                  "url": "#escalated"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1250, 400],
+      "id": "slack-low-conf",
+      "name": "Slack: Low Confidence",
+      "credentials": {
+        "slackApi": {
+          "id": "YOUR_SLACK_CREDENTIAL",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": {
+          "value": "emails"
+        },
+        "filter": {
+          "property": [
+            {
+              "name": "id",
+              "value": "={{ $json.record.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "schema": [
+            {
+              "column": "classification",
+              "value": "={{ $json.classification }}"
+            },
+            {
+              "column": "confidence",
+              "value": "={{ $json.confidence }}"
+            },
+            {
+              "column": "status",
+              "value": "needs_review"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1050, 400],
+      "id": "update-needs-review",
+      "name": "Update: Needs Review",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Route to appropriate workflow based on classification\nconst classification = $input.first().json.classification;\nconst record = $input.first().json.record;\n\n// Check for critical complaints\nconst bodyText = (record.body_text || '').toLowerCase();\nconst isCritical = ['lawsuit', 'lawyer', 'legal', 'scam', 'fraud', 'police', 'chargeback'].some(word => bodyText.includes(word));\n\nreturn [{\n  json: {\n    record: record,\n    classification: classification,\n    confidence: $input.first().json.confidence,\n    is_critical: isCritical,\n    routing: classification === 'STATUS' ? 'status_handler' : \n             classification === 'REFUND' ? 'refund_handler' :\n             classification === 'COMPLAINT' && isCritical ? 'escalate_critical' :\n             classification === 'COMPLAINT' ? 'complaint_handler' :
+             'general_handler'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position

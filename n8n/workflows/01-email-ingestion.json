@@ -1,0 +1,137 @@
+{
+  "name": "01 - Email Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 60
+            }
+          ]
+        }
+      },
+      "id": "trigger-node",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "filters": {
+          "unreadOnly": true,
+          "labels": ["INBOX"]
+        },
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "attachment_",
+          "downloadAttachments": false,
+          "dataPropertyAttachmentsPrefixName": "attachment",
+          "maxResults": 10
+        },
+        "limits": {
+          "maxResults": 10
+        }
+      },
+      "id": "gmail-node",
+      "name": "Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [450, 300],
+      "credentials": {
+        "gmailOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transform Gmail data for database\nconst results = [];\n\nfor (const item of $input.all()) {\n  const email = item.json;\n  \n  // Extract plain text from html if needed\n  let bodyText = email.textPlain || '';\n  if (!bodyText && email.textHtml) {\n    // Basic HTML strip (improve with library if needed)\n    bodyText = email.textHtml.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim();\n  }\n  \n  // Limit body length\n  bodyText = bodyText.substring(0, 10000);\n  \n  results.push({\n    json: {\n      external_id: email.id,\n      sender_email: email.from.value[0]?.address || '',\n      sender_name: email.from.value[0]?.name || '',\n      subject: email.subject || '(No subject)',\n      body_text: bodyText,\n      body_html: email.textHtml || '',\n      received_at: email.internalDate\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "transform-node",
+      "name": "Transform Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": {
+          "value": "emails"
+        },
+        "columns": {
+          "schema": [
+            {
+              "column": "external_id",
+              "value": "={{ $json.external_id }}"
+            },
+            {
+              "column": "sender_email",
+              "value": "={{ $json.sender_email }}"
+            },
+            {
+              "column": "sender_name",
+              "value": "={{ $json.sender_name }}"
+            },
+            {
+              "column": "subject",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "column": "body_text",
+              "value": "={{ $json.body_text }}"
+            },
+            {
+              "column": "body_html",
+              "value": "={{ $json.body_html }}"
+            },
+            {
+              "column": "received_at",
+              "value": "={{ $json.received_at }}"
+            }
+          ]
+        }
+      },
+      "id": "supabase-insert",
+      "name": "Supabase: Insert Email",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "markAsRead",
+        "messageId": "={{$items[0].$json.id}}"
+      },
+      "id": "gmail-mark-read",
+      "name": "Gmail: Mark as Read",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1050, 300],
+      "credentials": {
+        "gmailOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["email", "ingestion"]
+}

@@ -1,0 +1,129 @@
+{
+  "name": "03 - Generate Response",
+  "nodes": [
+    {
+      "parameters": {
+        "event": "UPDATE",
+        "schema": "public",
+        "table": "emails"
+      },
+      "type": "n8n-nodes-base.supabaseTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "id": "trigger-update",
+      "name": "Update Trigger: Status Classified",
+      "webhookId": "email-update-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "classified-high-conf",
+              "leftValue": "={{ $json.record.status }}",
+              "rightValue": "pending",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "has-confidence",
+              "leftValue": "={{ $json.record.confidence }}",
+              "rightValue": 0.8,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "id": "check-ready",
+      "name": "Ready to Respond?"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "table": {
+          "value": "knowledge_documents"
+        },
+        "match": {
+          "is_active": true
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [650, 200],
+      "id": "get-kb",
+      "name": "Get Knowledge Base"
+    },
+    {
+      "parameters": {
+        "options": {},
+        "prompt": "={{$json.record.classification === 'STATUS' ? generateStatusResponse($json.record, $json.kb) : $json.record.classification === 'REFUND' ? generateRefundResponse($json.record, $json.kb) : $json.record.classification === 'COMPLAINT' ? generateComplaintResponse($json.record) : generateGeneralResponse($json.record, $json.kb)}}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [850, 200],
+      "id": "openai-response",
+      "name": "OpenAI: Generate Response"
+    },
+    {
+      "parameters": {
+        "table": {
+          "value": "emails"
+        },
+        "operation": "update",
+        "filter": {
+          "property": [
+            {
+              "name": "id",
+              "value": "={{ $json.record.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "schema": [
+            {
+              "column": "ai_response",
+              "value": "={{ $json.response }}"
+            },
+            {
+              "column": "status",
+              "value": "={{$json.record.classification === 'STATUS' || $json.record.classification === 'GENERAL'}} ? 'auto_replied' : 'needs_approval'"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1050, 200],
+      "id": "save-response",
+      "name": "Save Response"
+    },
+    {
+      "parameters": {
+        "channel": "={{$json.record.classification === 'COMPLAINT' ? '#support-escalations' : '#support-auto'}}",
+        "text": "=📧 {{$json.record.classification}} email from {{$json.record.sender_name}}\n\nSubject: {{$json.record.subject}}\n\nAuto-response generated. {{$json.record.classification === 'STATUS' || $json.record.classification === 'GENERAL' ? 'Sent automatically' : 'Awaiting approval'}}."
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1250, 200],
+      "id": "notify-slack",
+      "name": "Notify Slack"
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["response", "openai"]
+}

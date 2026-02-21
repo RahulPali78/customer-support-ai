@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # n8n automation platform
+  n8n:
+    image: n8nio/n8n:latest
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=changeme-strong-password
+      - GENERIC_TIMEZONE=Europe/London
+      - TZ=Europe/London
+    volumes:
+      - ~/.n8n:/home/node/.n8n
+    networks:
+      - cs-ai-network
+
+  # Dashboard served via Streamlit
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8501:8501"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+    volumes:
+      - ./dashboard:/app
+      - ./.env:/app/.env:ro
+    networks:
+      - cs-ai-network
+    depends_on:
+      - n8n
+
+networks:
+  cs-ai-network:
+    driver: bridge

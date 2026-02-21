@@ -1,0 +1,13 @@
+id,sender_email,sender_name,subject,body_text,expected_classification,urgency
+1,customer1@email.com,John Smith,Where is my order?,"Hi there, I placed order #12345 last week and still haven't received it. Can you tell me when it will arrive? Thanks, John",STATUS,medium
+2,angry@email.com,Sarah Johnson,Terrible experience! Want refund,"This is the worst product I've ever bought. It broke after 2 days. I want my money back immediately. This is unacceptable.",REFUND,high
+3,shopper@email.com,Mike Davis,Quick question about sizing,"Hi team, I'm interested in buying your jacket but I'm not sure about the sizing. I'm usually a medium in most brands but saw your size guide says to size up. What do you recommend?",GENERAL,low
+4,returns@email.com,Emma Wilson,Requesting return label,"Hello, I need to return order #98765. The item doesn't fit as expected. I have the original packaging. Please send me a return label.",REFUND,medium
+5,track@email.com,Robert Brown,Tracking not working,"The tracking link you sent me doesn't show any updates. It's been 5 days. Can you check what happened to my package? Order #45678.",STATUS,medium
+6,complaint@email.com,Lisa Chen,Product arrived damaged,"My order arrived today but the box was crushed and the contents are damaged. I took photos. This is very disappointing. What can you do?",COMPLAINT,high
+7,spam@email.com,SEO Expert,Guest post opportunity,"Hi, I noticed your blog and would love to write a guest post for you. We can also do link exchanges. Please reply if interested.",OTHER,low
+8,loyal@email.com,David Miller,Love your products!,"Just wanted to say I love what you guys are doing. Been a customer for 2 years and recommend you to everyone. Keep up the great work!",GENERAL,low
+9,urgent@email.com,Alex Taylor,URGENT: Legal action if not resolved,"This is my third email with no response. I will be contacting my lawyer and posting on all social media if you don't resolve my issue TODAY. Order #11223.",COMPLAINT,critical
+10,help@email.com,Jennifer Lee,Wrong item received,"I ordered a blue shirt but received a red one. I need the blue one for an event next week. Can you send the correct item?",REFUND,high
+11,question@email.com,Tom Wilson,Do you ship to Canada?,"I'm interested in buying but I'm in Toronto. Do you ship internationally? What's the shipping cost and time?",GENERAL,low
+12,cancel@email.com,Amanda Green,Cancel my order,
