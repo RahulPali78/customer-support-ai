@@ -66,14 +66,72 @@
     },
     {
       "parameters": {
-        "options": {},
-        "prompt": "={{$json.record.classification === 'STATUS' ? generateStatusResponse($json.record, $json.kb) : $json.record.classification === 'REFUND' ? generateRefundResponse($json.record, $json.kb) : $json.record.classification === 'COMPLAINT' ? generateComplaintResponse($json.record) : generateGeneralResponse($json.record, $json.kb)}}"
+        "jsCode": "// Build prompt based on classification\nconst record = $json.record;\nconst kb = $json.kb || [];\n\nlet systemPrompt = 'You are a helpful customer support assistant. Respond professionally and concisely.';\nlet userPrompt = '';\n\nif (record.classification === 'STATUS') {\n  userPrompt = `Customer is asking about order status/delivery.\\n\\nEmail: \"${record.body_text}\"\\n\\nKnowledge base articles:\\n${kb.map(d => '- ' + d.title + ': ' + d.content.substring(0, 500)).join('\\n')}`;\n} else if (record.classification === 'REFUND') {\n  userPrompt = `Customer wants a refund.\\n\\nEmail: \"${record.body_text}\"\\n\\nKnowledge base:\\n${kb.map(d => '- ' + d.title).join('\\n')}`;\n} else if (record.classification === 'COMPLAINT') {\n  userPrompt = `Customer is complaining. Be empathetic and apologetic.\\n\\nEmail: \"${record.body_text}\"`;\n} else {\n  userPrompt = `Customer question:\\n\\n${record.body_text}`;\n}\n\nreturn [{\n  json: {\n    record,\n    kb,\n    messages: [\n      { role: 'system', content: systemPrompt },\n      { role: 'user', content: userPrompt }\n    ]\n  }\n}];"
       },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [850, 200],
-      "id": "openai-response",
-      "name": "OpenAI: Generate Response"
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "id": "build-prompt",
+      "name": "Build Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.moonshot.cn/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "moonshot-v1-8k"
+            },
+            {
+              "name": "messages",
+              "value": "={{JSON.stringify($json.messages)}}"
+            },
+            {
+              "name": "temperature",
+              "value": "0.7"
+            },
+            {
+              "name": "max_tokens",
+              "value": "500"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [850, 300],
+      "id": "kimi-response",
+      "name": "Kimi K2.5: Generate Response",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_KIMI_API_CREDENTIAL",
+          "name": "Kimi API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract response from Kimi\nconst response = $input.first().json.choices?.[0]?.message?.content || 'Error: No response';\nconst record = $json.record;\n\n// Auto-approve for STATUS/GENERAL, needs approval for REFUND/COMPLAINT\nconst autoReply = ['STATUS', 'GENERAL'].includes(record.classification);\nconst newStatus = autoReply ? 'auto_replied' : 'needs_approval';\n\nreturn [{\n  json: {\n    record,\n    response: response,\n    status: newStatus,\n    auto_reply: autoReply\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "id": "process-response",
+      "name": "Process Response"
     },
     {
       "parameters": {
@@ -82,48 +140,114 @@
         },
         "operation": "update",
         "filter": {
-          "property": [
-            {
-              "name": "id",
-              "value": "={{ $json.record.id }}"
-            }
-          ]
+          "id": "={{ $json.record.id }}"
         },
         "columns": {
-          "schema": [
-            {
-              "column": "ai_response",
-              "value": "={{ $json.response }}"
-            },
-            {
-              "column": "status",
-              "value": "={{$json.record.classification === 'STATUS' || $json.record.classification === 'GENERAL'}} ? 'auto_replied' : 'needs_approval'"
-            }
-          ]
+          "ai_response": "={{ $json.response }}",
+          "status": "={{ $json.status }}"
         }
       },
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
-      "position": [1050, 200],
+      "position": [1250, 300],
       "id": "save-response",
       "name": "Save Response"
     },
     {
       "parameters": {
-        "channel": "={{$json.record.classification === 'COMPLAINT' ? '#support-escalations' : '#support-auto'}}",
-        "text": "=📧 {{$json.record.classification}} email from {{$json.record.sender_name}}\n\nSubject: {{$json.record.subject}}\n\nAuto-response generated. {{$json.record.classification === 'STATUS' || $json.record.classification === 'GENERAL' ? 'Sent automatically' : 'Awaiting approval'}}."
+        "channel": "={{ $json.record.classification === 'COMPLAINT' ? '#support-escalations' : '#support-auto' }}",
+        "text": "=📧 {{ $json.record.classification }} from {{ $json.record.sender_name }}\\n\\nSubject: {{ $json.record.subject }}\\n\\n{{ $json.auto_reply ? '✅ Auto-responded' : '⏳ Awaiting approval' }}"
       },
       "type": "n8n-nodes-base.slack",
       "typeVersion": 2.1,
-      "position": [1250, 200],
+      "position": [1450, 300],
       "id": "notify-slack",
       "name": "Notify Slack"
     }
   ],
-  "connections": {},
+  "connections": {
+    "Update Trigger: Status Classified": {
+      "main": [
+        [
+          {
+            "node": "Ready to Respond?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ready to Respond?": {
+      "main": [
+        [
+          {
+            "node": "Get Knowledge Base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Knowledge Base": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Kimi K2.5: Generate Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kimi K2.5: Generate Response": {
+      "main": [
+        [
+          {
+            "node": "Process Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Response": {
+      "main": [
+        [
+          {
+            "node": "Save Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Response": {
+      "main": [
+        [
+            {
+              "node": "Notify Slack",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      ]
+    }
+  },
   "settings": {
     "executionOrder": "v1"
   },
   "staticData": null,
-  "tags": ["response", "openai"]
+  "tags": ["response", "kimi"]
 }

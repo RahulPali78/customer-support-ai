@@ -29,7 +29,6 @@
         "options": {
           "dataPropertyAttachmentsPrefixName": "attachment_",
           "downloadAttachments": false,
-          "dataPropertyAttachmentsPrefixName": "attachment",
           "maxResults": 10
         },
         "limits": {
@@ -50,7 +49,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Transform Gmail data for database\nconst results = [];\n\nfor (const item of $input.all()) {\n  const email = item.json;\n  \n  // Extract plain text from html if needed\n  let bodyText = email.textPlain || '';\n  if (!bodyText && email.textHtml) {\n    // Basic HTML strip (improve with library if needed)\n    bodyText = email.textHtml.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim();\n  }\n  \n  // Limit body length\n  bodyText = bodyText.substring(0, 10000);\n  \n  results.push({\n    json: {\n      external_id: email.id,\n      sender_email: email.from.value[0]?.address || '',\n      sender_name: email.from.value[0]?.name || '',\n      subject: email.subject || '(No subject)',\n      body_text: bodyText,\n      body_html: email.textHtml || '',\n      received_at: email.internalDate\n    }\n  });\n}\n\nreturn results;"
+        "jsCode": "// Transform Gmail data for database\nconst results = [];\n\nfor (const item of $input.all()) {\n  const email = item.json;\n  \n  // Extract plain text from html if needed\n  let bodyText = email.textPlain || '';\n  if (!bodyText && email.textHtml) {\n    bodyText = email.textHtml.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim();\n  }\n  \n  results.push({\n    json: {\n      external_id: email.id,\n      sender_email: email.from?.value?.[0]?.address || '',\n      sender_name: email.from?.value?.[0]?.name || '',\n      subject: email.subject || '(No subject)',\n      body_text: bodyText.substring(0, 10000),\n      body_html: email.textHtml || '',\n      received_at: email.internalDate\n    }\n  });\n}\n\nreturn results;"
       },
       "id": "transform-node",
       "name": "Transform Data",
@@ -128,6 +127,52 @@
       }
     }
   ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail": {
+      "main": [
+        [
+          {
+            "node": "Transform Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Data": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Insert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Insert Email": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Mark as Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
   "pinData": {},
   "settings": {
     "executionOrder": "v1"
