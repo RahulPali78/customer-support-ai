@@ -38,7 +38,7 @@
             },
             {
               "name": "messages",
-              "value": "={{JSON.stringify([{\"role\": \"system\", \"content\": \"You are a customer service email classifier. Respond ONLY in valid JSON format.\"}, {\"role\": \"user\", \"content\": \"EMAIL BODY: \" + $json.record.body_text + \"\\n\\n---\\n\\nINSTRUCTIONS:\\nClassify this customer service email into exactly ONE of these categories:\\n- REFUND: Customer wants money back, return item, cancel order\\n- STATUS: Checking order status, tracking, delivery time\\n- COMPLAINT: Dissatisfied, quality issue, bad experience\\n- GENERAL: Question not fitting above, partnership, wholesale, etc.\\n- OTHER: Spam, unclear, or cannot categorize\\n\\nRespond ONLY in JSON format:\\n{\\\"classification\\\": \\\"REFUND|STATUS|COMPLAINT|GENERAL|OTHER\\\", \\\"confidence\\\": 0.0-1.0, \\\"reasoning\\\": \\\"brief\\\", \\\"urgency\\\": \\\"low|medium|high|critical\\\"}\\n\\nconfidence > 0.8 means clear classification\"}])}}"
+              "value": "={{[{\"role\": \"system\", \"content\": \"You are a customer service email classifier. Respond ONLY in valid JSON format.\"}, {\"role\": \"user\", \"content\": \"EMAIL BODY: \" + $json.record.body_text + \"\\n\\n---\\n\\nINSTRUCTIONS:\\nClassify this customer service email into exactly ONE of these categories:\\n- REFUND: Customer wants money back, return item, cancel order\\n- STATUS: Checking order status, tracking, delivery time\\n- COMPLAINT: Dissatisfied, quality issue, bad experience\\n- GENERAL: Question not fitting above, partnership, wholesale, etc.\\n- OTHER: Spam, unclear, or cannot categorize\\n\\nRespond ONLY in JSON format:\\n{\\\"classification\\\": \\\"REFUND|STATUS|COMPLAINT|GENERAL|OTHER\\\", \\\"confidence\\\": 0.0-1.0, \\\"reasoning\\\": \\\"brief\\\", \\\"urgency\\\": \\\"low|medium|high|critical\\\"}\\n\\nconfidence > 0.8 means clear classification\"}]}}"
             },
             {
               "name": "temperature",
@@ -61,7 +61,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse Kimi response and extract JSON\nconst response = $input.first().json.choices?.[0]?.message?.content || '';\n\nlet classification = { classification: 'OTHER', confidence: 0.0, reasoning: 'parse_error', urgency: 'low' };\n\ntry {\n  const jsonMatch = response.match(/\\{[^}]+\\}/);\n  if (jsonMatch) {\n    classification = JSON.parse(jsonMatch[0]);\n  } else {\n    classification = JSON.parse(response);\n  }\n} catch (e) {\n  classification = { classification: 'OTHER', confidence: 0.3, reasoning: 'parse_failed', urgency: 'low' };\n}\n\nif (!classification.classification) classification.classification = 'OTHER';\nif (!classification.confidence) classification.confidence = 0.5;\nif (!classification.reasoning) classification.reasoning = 'no_reasoning';\nif (!classification.urgency) classification.urgency = 'low';\n\nreturn [{\n  json: {\n    record: $json.record,\n    classification: classification.classification.toUpperCase(),\n    confidence: parseFloat(classification.confidence),\n    reasoning: classification.reasoning,\n    urgency: classification.urgency.toLowerCase()\n  }\n}];"
+        "jsCode": "// Parse Kimi response and extract JSON\nconst response = $input.first().json.choices?.[0]?.message?.content || '';\nlet classification = { classification: 'OTHER', confidence: 0.0, reasoning: 'parse_error', urgency: 'low' };\ntry {\n  const jsonMatch = response.match(/\\{[^}]+\\}/);\n  if (jsonMatch) {\n    classification = JSON.parse(jsonMatch[0]);\n  } else {\n    classification = JSON.parse(response);\n  }\n} catch (e) {\n  classification = { classification: 'OTHER', confidence: 0.3, reasoning: 'parse_failed', urgency: 'low' };\n}\nif (!classification.classification) classification.classification = 'OTHER';\nif (!classification.confidence) classification.confidence = 0.5;\nif (!classification.reasoning) classification.reasoning = 'no_reasoning';\nif (!classification.urgency) classification.urgency = 'low';\nreturn [{\n  json: {\n    record: $json.record,\n    classification: classification.classification.toUpperCase(),\n    confidence: parseFloat(classification.confidence),\n    reasoning: classification.reasoning,\n    urgency: classification.urgency.toLowerCase()\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -116,7 +116,7 @@
     {
       "parameters": {
         "channel": "#support-review",
-        "text": "=⚠️ Low confidence email needs review\\n\\nSubject: {{ $json.record.subject }}\\nConfidence: {{ $json.confidence }}\\nClassification: {{ $json.classification }}"
+        "text": "=⚠️ Low confidence: {{ $json.record.subject }}"
       },
       "type": "n8n-nodes-base.slack",
       "typeVersion": 2.1,
@@ -142,16 +142,6 @@
       "position": [1050, 400],
       "id": "update-needs-review",
       "name": "Update: Needs Review"
-    },
-    {
-      "parameters": {
-        "jsCode": "const classification = $input.first().json.classification;\nconst record = $input.first().json.record;\nconst bodyText = (record.body_text || '').toLowerCase();\nconst isCritical = ['lawsuit','lawyer','legal','scam','fraud'].some(w => bodyText.includes(w));\nreturn [{json: {record, classification, is_critical: isCritical}}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1250, 200],
-      "id": "route-node",
-      "name": "Route by Type"
     }
   ],
   "connections": {
@@ -194,11 +184,6 @@
           {
             "node": "Update: Classified",
             "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Route by Type",
-            "            "type": "main",
             "index": 0
           }
         ],

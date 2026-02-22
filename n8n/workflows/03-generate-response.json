@@ -60,17 +60,17 @@
       },
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
-      "position": [650, 200],
+      "position": [650, 300],
       "id": "get-kb",
       "name": "Get Knowledge Base"
     },
     {
       "parameters": {
-        "jsCode": "// Build prompt based on classification\nconst record = $json.record;\nconst kb = $json.kb || [];\n\nlet systemPrompt = 'You are a helpful customer support assistant. Respond professionally and concisely.';\nlet userPrompt = '';\n\nif (record.classification === 'STATUS') {\n  userPrompt = `Customer is asking about order status/delivery.\\n\\nEmail: \"${record.body_text}\"\\n\\nKnowledge base articles:\\n${kb.map(d => '- ' + d.title + ': ' + d.content.substring(0, 500)).join('\\n')}`;\n} else if (record.classification === 'REFUND') {\n  userPrompt = `Customer wants a refund.\\n\\nEmail: \"${record.body_text}\"\\n\\nKnowledge base:\\n${kb.map(d => '- ' + d.title).join('\\n')}`;\n} else if (record.classification === 'COMPLAINT') {\n  userPrompt = `Customer is complaining. Be empathetic and apologetic.\\n\\nEmail: \"${record.body_text}\"`;\n} else {\n  userPrompt = `Customer question:\\n\\n${record.body_text}`;\n}\n\nreturn [{\n  json: {\n    record,\n    kb,\n    messages: [\n      { role: 'system', content: systemPrompt },\n      { role: 'user', content: userPrompt }\n    ]\n  }\n}];"
+        "jsCode": "// Build messages for Kimi\nconst record = $json.record;\nconst kb = $input.first().json || [];\nlet userPrompt = 'Customer email: ' + record.body_text;\nif (record.classification === 'STATUS') {\n  userPrompt += '\\n\\nProvide order status info.';\n} else if (record.classification === 'REFUND') {\n  userPrompt += '\\n\\nHandle refund request.';\n} else if (record.classification === 'COMPLAINT') {\n  userPrompt += '\\n\\nBe empathetic and apologetic.';\n}\nuserPrompt += '\\n\\nKnowledge base:\\n' + kb.slice(0, 3).map(d => d.title + ': ' + d.content?.substring(0, 200)).join('\\n');\nreturn [{\n  json: {\n    record,\n    messages: [\n      { role: 'system', content: 'You are a helpful customer support assistant. Respond professionally.' },\n      { role: 'user', content: userPrompt }\n    ]\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [650, 300],
+      "position": [850, 300],
       "id": "build-prompt",
       "name": "Build Prompt"
     },
@@ -113,7 +113,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [850, 300],
+      "position": [1050, 300],
       "id": "kimi-response",
       "name": "Kimi K2.5: Generate Response",
       "credentials": {
@@ -125,11 +125,11 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract response from Kimi\nconst response = $input.first().json.choices?.[0]?.message?.content || 'Error: No response';\nconst record = $json.record;\n\n// Auto-approve for STATUS/GENERAL, needs approval for REFUND/COMPLAINT\nconst autoReply = ['STATUS', 'GENERAL'].includes(record.classification);\nconst newStatus = autoReply ? 'auto_replied' : 'needs_approval';\n\nreturn [{\n  json: {\n    record,\n    response: response,\n    status: newStatus,\n    auto_reply: autoReply\n  }\n}];"
+        "jsCode": "const response = $input.first().json.choices?.[0]?.message?.content || 'Error: No response';\nconst record = $json.record;\nconst autoReply = ['STATUS', 'GENERAL'].includes(record.classification);\nreturn [{\n  json: {\n    record,\n    response,\n    status: autoReply ? 'auto_replied' : 'needs_approval',\n    auto_reply: autoReply\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1050, 300],
+      "position": [1250, 300],
       "id": "process-response",
       "name": "Process Response"
     },
@@ -149,18 +149,18 @@
       },
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
-      "position": [1250, 300],
+      "position": [1450, 300],
       "id": "save-response",
       "name": "Save Response"
     },
     {
       "parameters": {
-        "channel": "={{ $json.record.classification === 'COMPLAINT' ? '#support-escalations' : '#support-auto' }}",
-        "text": "=📧 {{ $json.record.classification }} from {{ $json.record.sender_name }}\\n\\nSubject: {{ $json.record.subject }}\\n\\n{{ $json.auto_reply ? '✅ Auto-responded' : '⏳ Awaiting approval' }}"
+        "channel": "#support-auto",
+        "text": "=📧 {{ $json.record.classification }} processed"
       },
       "type": "n8n-nodes-base.slack",
       "typeVersion": 2.1,
-      "position": [1450, 300],
+      "position": [1650, 300],
       "id": "notify-slack",
       "name": "Notify Slack"
     }
@@ -235,12 +235,11 @@
     "Save Response": {
       "main": [
         [
-            {
-              "node": "Notify Slack",
-              "type": "main",
-              "index": 0
-            }
-          ]
+          {
+            "node": "Notify Slack",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     }
